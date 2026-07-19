@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import MarketCard from '@/components/MarketCard'
 import NewsCard from '@/components/NewsCard'
-import ArbitrageCard from '@/components/ArbitrageCard'
 import WhaleActivity from '@/components/WhaleActivity'
-import PriceChart from '@/components/PriceChart'
 import {
   getTrendingMarkets,
   getEndingSoonMarkets,
@@ -14,9 +12,7 @@ import {
 } from '@/lib/api'
 import {
   mockNews,
-  mockArbitrage,
   mockWhaleActivity,
-  generateChartData,
 } from '@/lib/mock-data'
 import {
   TrendingUp,
@@ -27,6 +23,7 @@ import {
   Sparkles,
   Activity,
   Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -34,34 +31,40 @@ export default function Dashboard() {
   const [trendingMarkets, setTrendingMarkets] = useState<PolymarketMarket[]>([])
   const [endingSoonMarkets, setEndingSoonMarkets] = useState<PolymarketMarket[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
   const latestNews = mockNews.slice(0, 3)
-  const arbitrageOpportunities = mockArbitrage.slice(0, 2)
-  const chartData = generateChartData(30)
+
+  async function fetchData() {
+    try {
+      setLoading(true)
+      setError(null)
+      const [trending, endingSoon] = await Promise.all([
+        getTrendingMarkets(12),
+        getEndingSoonMarkets(12),
+      ])
+      setTrendingMarkets(trending)
+      setEndingSoonMarkets(endingSoon)
+    } catch (err) {
+      console.error('Error fetching data:', err)
+      setTrendingMarkets([])
+      setEndingSoonMarkets([])
+      setError('Failed to fetch live Polymarket markets.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true)
-        const [trending, endingSoon] = await Promise.all([
-          getTrendingMarkets(6),
-          getEndingSoonMarkets(3),
-        ])
-        setTrendingMarkets(trending)
-        setEndingSoonMarkets(endingSoon)
-      } catch (err) {
-        console.error('Error fetching data:', err)
-        // API will return mock data on error, so we won't get here
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchData()
   }, [])
 
-  // Calculate total volume
-  const totalVolume = trendingMarkets.reduce((acc, m) => acc + (m.volumeNum || 0), 0)
+  const allLoadedMarkets = [...trendingMarkets, ...endingSoonMarkets]
+  const uniqueLoadedMarkets = Array.from(new Map(allLoadedMarkets.map((market) => [market.id, market])).values())
+  const totalVolume = uniqueLoadedMarkets.reduce((acc, m) => acc + (m.volumeNum || 0), 0)
+  const totalLiquidity = uniqueLoadedMarkets.reduce((acc, m) => acc + (m.liquidityNum || 0), 0)
+  const activeMarkets = uniqueLoadedMarkets.filter((market) => market.active && !market.closed).length
+  const acceptingOrders = uniqueLoadedMarkets.filter((market) => market.acceptingOrders).length
 
   return (
     <div className="flex min-h-screen bg-terminal-bg">
@@ -98,6 +101,18 @@ export default function Dashboard() {
               <Loader2 className="w-8 h-8 animate-spin text-terminal-accent" />
               <span className="ml-3 text-terminal-muted">Loading markets...</span>
             </div>
+          ) : error ? (
+            <div className="bg-terminal-card border border-terminal-border rounded-xl p-8 text-center">
+              <AlertCircle className="w-10 h-10 text-terminal-warning mx-auto mb-4" />
+              <h2 className="text-lg font-semibold mb-2">Live markets unavailable</h2>
+              <p className="text-sm text-terminal-muted mb-6">{error}</p>
+              <button
+                onClick={fetchData}
+                className="px-4 py-2 bg-terminal-accent hover:bg-terminal-accent/90 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <>
               {/* Stats Overview */}
@@ -107,10 +122,10 @@ export default function Dashboard() {
                     <div className="p-2 bg-terminal-accent/10 rounded-lg">
                       <Activity className="w-5 h-5 text-terminal-accent" />
                     </div>
-                    <span className="text-sm text-terminal-muted">Total Volume (24h)</span>
+                    <span className="text-sm text-terminal-muted">Loaded Volume</span>
                   </div>
                   <p className="text-2xl font-bold">{formatCurrency(totalVolume)}</p>
-                  <p className="text-xs text-terminal-success mt-1">Live from Polymarket</p>
+                  <p className="text-xs text-terminal-success mt-1">From live Polymarket rows</p>
                 </div>
                 <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-2">
@@ -119,54 +134,29 @@ export default function Dashboard() {
                     </div>
                     <span className="text-sm text-terminal-muted">Active Markets</span>
                   </div>
-                  <p className="text-2xl font-bold">{trendingMarkets.length + endingSoonMarkets.length}+</p>
-                  <p className="text-xs text-terminal-success mt-1">Real-time data</p>
+                  <p className="text-2xl font-bold">{activeMarkets}</p>
+                  <p className="text-xs text-terminal-success mt-1">Loaded active markets</p>
                 </div>
                 <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-terminal-warning/10 rounded-lg">
                       <Zap className="w-5 h-5 text-terminal-warning" />
                     </div>
-                    <span className="text-sm text-terminal-muted">Arb Opportunities</span>
+                    <span className="text-sm text-terminal-muted">Accepting Orders</span>
                   </div>
-                  <p className="text-2xl font-bold">{mockArbitrage.length}</p>
-                  <p className="text-xs text-terminal-muted mt-1">Avg ROI: 7.1%</p>
+                  <p className="text-2xl font-bold">{acceptingOrders}</p>
+                  <p className="text-xs text-terminal-muted mt-1">No synthetic arbitrage</p>
                 </div>
                 <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-purple-500/10 rounded-lg">
                       <Sparkles className="w-5 h-5 text-purple-500" />
                     </div>
-                    <span className="text-sm text-terminal-muted">AI Signals</span>
+                    <span className="text-sm text-terminal-muted">Loaded Liquidity</span>
                   </div>
-                  <p className="text-2xl font-bold">24</p>
-                  <p className="text-xs text-terminal-success mt-1">8 high confidence</p>
+                  <p className="text-2xl font-bold">{formatCurrency(totalLiquidity)}</p>
+                  <p className="text-xs text-terminal-success mt-1">From live Polymarket rows</p>
                 </div>
-              </div>
-
-              {/* Market Overview Chart */}
-              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-lg font-semibold">Market Overview</h2>
-                    <p className="text-sm text-terminal-muted">30-day probability trends</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {['1D', '1W', '1M', '3M', '1Y'].map((period) => (
-                      <button
-                        key={period}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                          period === '1M'
-                            ? 'bg-terminal-accent text-white'
-                            : 'bg-terminal-bg text-terminal-muted hover:text-white'
-                        }`}
-                      >
-                        {period}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <PriceChart data={chartData} height={250} />
               </div>
 
               {/* Trending Markets */}
@@ -201,9 +191,17 @@ export default function Dashboard() {
                     </a>
                   </div>
                   <div className="space-y-4">
-                    {arbitrageOpportunities.map((opp) => (
-                      <ArbitrageCard key={opp.id} opportunity={opp} />
-                    ))}
+                    <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-terminal-warning mt-0.5" />
+                        <div>
+                          <h3 className="font-semibold mb-2">No verified arbitrage feed connected</h3>
+                          <p className="text-sm text-terminal-muted">
+                            Arbitrage requires comparable prices from at least two live venues. This build only has Polymarket market data, so fabricated opportunities are hidden.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

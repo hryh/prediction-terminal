@@ -79,8 +79,7 @@ export interface MarketTrade {
   takerAddress: string;
 }
 
-// Mock markets for fallback when API fails
-const MOCK_MARKETS: PolymarketMarket[] = [
+const DISABLED_MOCK_MARKETS: PolymarketMarket[] = [
   {
     id: 'mock-market-1',
     question: 'Will Bitcoin hit $100,000 by end of 2024?',
@@ -297,6 +296,29 @@ function isBuildTime(): boolean {
 // Gamma API direct URL (for server-side calls during build)
 const GAMMA_API = 'https://gamma-api.polymarket.com';
 
+function normalizeMarket(market: PolymarketMarket): PolymarketMarket {
+  let prices: number[] = [];
+
+  if (Array.isArray(market.outcomePrices)) {
+    prices = market.outcomePrices.map((p: string) => parseFloat(p) || 0);
+  } else if (typeof market.outcomePrices === 'string') {
+    try {
+      const parsed = JSON.parse(market.outcomePrices);
+      prices = Array.isArray(parsed) ? parsed.map((p: string) => parseFloat(p) || 0) : [];
+    } catch {
+      prices = [];
+    }
+  }
+
+  return {
+    ...market,
+    liquidityNum: Number(market.liquidityNum || market.liquidity || 0),
+    volumeNum: Number(market.volumeNum || market.volume || market.volumeClob || 0),
+    volumeClob: Number(market.volumeClob || 0),
+    outcomePricesNum: prices,
+  };
+}
+
 // Internal API - Markets (proxies to Gamma API)
 export async function getMarkets(params?: {
   limit?: number;
@@ -337,26 +359,18 @@ export async function getMarkets(params?: {
     });
     
     if (!response.ok) {
-      console.warn('API returned error, using mock data');
-      return getFilteredMockMarkets(params);
+      throw new Error(`Failed to fetch markets: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
+    if (!Array.isArray(data)) {
+      throw new Error(data?.error || 'Markets API returned an unexpected response');
+    }
     
-    // Parse outcome prices from strings to numbers
-    return data.map((market: PolymarketMarket) => {
-      let prices: number[] = [];
-      if (Array.isArray(market.outcomePrices)) {
-        prices = market.outcomePrices.map((p: string) => parseFloat(p) || 0);
-      }
-      return {
-        ...market,
-        outcomePricesNum: prices,
-      };
-    });
+    return data.map(normalizeMarket);
   } catch (error) {
-    console.error('Error fetching markets, using mock data:', error);
-    return getFilteredMockMarkets(params);
+    console.error('Error fetching markets:', error);
+    throw error;
   }
 }
 
@@ -367,7 +381,7 @@ function getFilteredMockMarkets(params?: {
   order?: 'asc' | 'desc';
   search?: string;
 }): PolymarketMarket[] {
-  let markets = [...MOCK_MARKETS];
+  let markets = [...DISABLED_MOCK_MARKETS];
   
   // Search filter
   if (params?.search) {
@@ -410,28 +424,13 @@ export async function getMarket(marketId: string): Promise<PolymarketMarket | nu
       },
     });
     
-    if (!response.ok) {
-      const mockMarket = MOCK_MARKETS.find(m => m.id === marketId || m.slug === marketId);
-      if (mockMarket) return mockMarket;
-      return MOCK_MARKETS[0];
-    }
+    if (!response.ok) return null;
     
     const data = await response.json();
-    
-    // Parse outcome prices
-    let prices: number[] = [];
-    if (Array.isArray(data.outcomePrices)) {
-      prices = data.outcomePrices.map((p: string) => parseFloat(p) || 0);
-    }
-    
-    return {
-      ...data,
-      outcomePricesNum: prices,
-    };
+    return normalizeMarket(data);
   } catch (error) {
-    console.error('Error fetching market, using mock data:', error);
-    const mockMarket = MOCK_MARKETS.find(m => m.id === marketId || m.slug === marketId);
-    return mockMarket || MOCK_MARKETS[0];
+    console.error('Error fetching market:', error);
+    return null;
   }
 }
 

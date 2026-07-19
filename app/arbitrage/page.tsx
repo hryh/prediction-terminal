@@ -2,38 +2,20 @@
 
 import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
-import { mockArbitrage, ArbitrageOpportunity } from '@/lib/mock-data'
 import {
   Scale,
-  ArrowRight,
-  TrendingUp,
-  Clock,
-  Shield,
   Filter,
   Download,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 
 export default function ArbitragePage() {
   const [minROI, setMinROI] = useState(0)
   const [minLiquidity, setMinLiquidity] = useState(0)
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
 
-  const filteredOpportunities = mockArbitrage.filter((opp) => {
-    const matchesROI = opp.roi >= minROI
-    const matchesLiquidity = opp.liquidity >= minLiquidity
-    const matchesPlatform = selectedPlatforms.length === 0 || 
-      selectedPlatforms.includes(opp.platformA) || 
-      selectedPlatforms.includes(opp.platformB)
-    return matchesROI && matchesLiquidity && matchesPlatform
-  })
-
-  const totalProfitPotential = filteredOpportunities.reduce(
-    (acc, opp) => acc + (opp.liquidity * opp.roi) / 100,
-    0
-  )
+  const verifiedOpportunities: never[] = []
 
   return (
     <div className="flex min-h-screen bg-terminal-bg">
@@ -66,31 +48,29 @@ export default function ArbitragePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
               <p className="text-sm text-terminal-muted mb-1">Active Opportunities</p>
-              <p className="text-3xl font-bold">{filteredOpportunities.length}</p>
-              <p className="text-xs text-terminal-success mt-1">Across 2 platforms</p>
+              <p className="text-3xl font-bold">{verifiedOpportunities.length}</p>
+              <p className="text-xs text-terminal-muted mt-1">Verified live only</p>
             </div>
             <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
               <p className="text-sm text-terminal-muted mb-1">Avg ROI</p>
               <p className="text-3xl font-bold text-terminal-success">
-                {filteredOpportunities.length > 0
-                  ? (filteredOpportunities.reduce((acc, o) => acc + o.roi, 0) / filteredOpportunities.length).toFixed(1)
-                  : 0}%
+                0.0%
               </p>
-              <p className="text-xs text-terminal-muted mt-1">After fees</p>
+              <p className="text-xs text-terminal-muted mt-1">No synthetic ROI</p>
             </div>
             <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
               <p className="text-sm text-terminal-muted mb-1">Total Liquidity</p>
               <p className="text-3xl font-bold">
-                {formatCurrency(filteredOpportunities.reduce((acc, o) => acc + o.liquidity, 0))}
+                {formatCurrency(0)}
               </p>
-              <p className="text-xs text-terminal-muted mt-1">Available for arbitrage</p>
+              <p className="text-xs text-terminal-muted mt-1">Requires second venue feed</p>
             </div>
             <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
               <p className="text-sm text-terminal-muted mb-1">Profit Potential</p>
               <p className="text-3xl font-bold text-terminal-success">
-                {formatCurrency(totalProfitPotential)}
+                {formatCurrency(0)}
               </p>
-              <p className="text-xs text-terminal-muted mt-1">Theoretical max</p>
+              <p className="text-xs text-terminal-muted mt-1">Not estimated</p>
             </div>
           </div>
 
@@ -188,7 +168,7 @@ export default function ArbitragePage() {
                   <h2 className="font-semibold">Arbitrage Opportunities</h2>
                 </div>
                 
-                {filteredOpportunities.length > 0 ? (
+                {verifiedOpportunities.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -202,92 +182,29 @@ export default function ArbitragePage() {
                           <th className="text-right px-6 py-4 text-sm font-medium text-terminal-muted">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {filteredOpportunities.map((opp) => (
-                          <tr key={opp.id} className="border-b border-terminal-border hover:bg-terminal-border/30 transition-colors">
-                            <td className="px-6 py-4">
-                              <p className="font-medium line-clamp-2 max-w-xs">{opp.market}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-terminal-muted">{opp.platformA}</span>
-                                <ArrowRight className="w-3 h-3 text-terminal-muted" />
-                                <span className="text-xs text-terminal-muted">{opp.platformB}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="font-medium terminal-text">{formatPercentage(opp.priceA)}</p>
-                              <p className="text-xs text-terminal-muted">{opp.platformA}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="font-medium terminal-text">{formatPercentage(opp.priceB)}</p>
-                              <p className="text-xs text-terminal-muted">{opp.platformB}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-terminal-success/10 text-terminal-success rounded-full text-sm font-medium">
-                                <TrendingUp className="w-3 h-3" />
-                                +{opp.roi.toFixed(1)}%
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="font-medium">{formatCurrency(opp.liquidity)}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <div className="w-16 h-2 bg-terminal-bg rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-terminal-accent rounded-full"
-                                    style={{ width: `${opp.confidence * 100}%` }}
-                                  />
-                                </div>
-                                <span className="text-sm">{(opp.confidence * 100).toFixed(0)}%</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button className="px-4 py-2 bg-terminal-accent hover:bg-terminal-accent/90 text-white text-sm font-medium rounded-lg transition-colors">
-                                Execute
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
+                      <tbody />
                     </table>
                   </div>
                 ) : (
                   <div className="p-12 text-center">
                     <Scale className="w-12 h-12 text-terminal-muted mx-auto mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No opportunities found</h3>
-                    <p className="text-sm text-terminal-muted">Try adjusting your filters</p>
+                    <h3 className="text-lg font-medium mb-2">No verified arbitrage opportunities</h3>
+                    <p className="text-sm text-terminal-muted max-w-xl mx-auto">
+                      This screen no longer uses premade opportunities. Connect a second live venue such as Kalshi with comparable market mappings before showing ROI, liquidity, or execution actions.
+                    </p>
                   </div>
                 )}
               </div>
 
-              {/* How It Works */}
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                  <div className="w-10 h-10 bg-terminal-accent/10 rounded-lg flex items-center justify-center mb-4">
-                    <Scale className="w-5 h-5 text-terminal-accent" />
+              <div className="mt-8 bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-terminal-warning mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold mb-2">Arbitrage data policy</h3>
+                    <p className="text-sm text-terminal-muted">
+                      A valid opportunity must come from two live, comparable order books after fees and settlement differences. Until that data is connected, the app reports zero instead of estimating or fabricating opportunities.
+                    </p>
                   </div>
-                  <h3 className="font-semibold mb-2">Price Comparison</h3>
-                  <p className="text-sm text-terminal-muted">
-                    We continuously scan multiple prediction markets to identify price discrepancies for identical outcomes.
-                  </p>
-                </div>
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                  <div className="w-10 h-10 bg-terminal-success/10 rounded-lg flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-5 h-5 text-terminal-success" />
-                  </div>
-                  <h3 className="font-semibold mb-2">Execution Analysis</h3>
-                  <p className="text-sm text-terminal-muted">
-                    Each opportunity is analyzed for liquidity, fees, and execution time to ensure profitable trades.
-                  </p>
-                </div>
-                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                  <div className="w-10 h-10 bg-terminal-warning/10 rounded-lg flex items-center justify-center mb-4">
-                    <AlertCircle className="w-5 h-5 text-terminal-warning" />
-                  </div>
-                  <h3 className="font-semibold mb-2">Risk Assessment</h3>
-                  <p className="text-sm text-terminal-muted">
-                    Confidence scores account for settlement risk, platform reliability, and market volatility.
-                  </p>
                 </div>
               </div>
             </div>

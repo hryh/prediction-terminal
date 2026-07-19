@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const GAMMA_API = 'https://gamma-api.polymarket.com'
 
+function normalizeMarket(market: any) {
+  let prices: number[] = []
+
+  if (Array.isArray(market.outcomePrices)) {
+    prices = market.outcomePrices.map((p: string) => parseFloat(p) || 0)
+  } else if (typeof market.outcomePrices === 'string') {
+    try {
+      const parsed = JSON.parse(market.outcomePrices)
+      prices = Array.isArray(parsed) ? parsed.map((p: string) => parseFloat(p) || 0) : []
+    } catch {
+      prices = []
+    }
+  }
+
+  return {
+    ...market,
+    liquidityNum: Number(market.liquidityNum || market.liquidity || 0),
+    volumeNum: Number(market.volumeNum || market.volume || market.volumeClob || 0),
+    volumeClob: Number(market.volumeClob || 0),
+    outcomePricesNum: prices,
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   
@@ -30,17 +53,11 @@ export async function GET(request: NextRequest) {
     
     const data = await response.json()
     
-    // Parse outcome prices from strings to numbers
-    const markets = data.map((market: any) => {
-      let prices: number[] = []
-      if (Array.isArray(market.outcomePrices)) {
-        prices = market.outcomePrices.map((p: string) => parseFloat(p) || 0)
-      }
-      return {
-        ...market,
-        outcomePricesNum: prices,
-      }
-    })
+    if (!Array.isArray(data)) {
+      throw new Error('Gamma API returned an unexpected response')
+    }
+
+    const markets = data.map(normalizeMarket)
     
     return NextResponse.json(markets, {
       headers: {
