@@ -1,22 +1,55 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import MarketCard from '@/components/MarketCard'
-import { mockMarkets } from '@/lib/mock-data'
-import { Search, Filter, Grid3X3, List, TrendingUp } from 'lucide-react'
+import { getMarkets, PolymarketMarket } from '@/lib/api'
+import { Search, Filter, Grid3X3, List, TrendingUp, Loader2 } from 'lucide-react'
 
-const categories = ['All', 'Politics', 'Crypto', 'Economics', 'Geopolitics', 'Sports', 'Tech']
-const sortOptions = ['Volume', 'Newest', 'Ending Soon', 'Highest Liquidity']
+const categories = ['All', 'Politics', 'Crypto', 'Sports', 'Tech', 'Science', 'Pop Culture']
+const sortOptions = [
+  { label: 'Volume', value: 'volume' },
+  { label: 'Liquidity', value: 'liquidity' },
+  { label: 'Newest', value: 'createdAt' },
+  { label: 'Ending Soon', value: 'endDate' },
+]
 
 export default function MarketsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [markets, setMarkets] = useState<PolymarketMarket[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState('volume')
 
-  const filteredMarkets = mockMarkets.filter(market => {
-    const matchesCategory = selectedCategory === 'All' || market.category === selectedCategory
-    const matchesSearch = market.title.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    async function fetchMarkets() {
+      try {
+        setLoading(true)
+        const data = await getMarkets({
+          limit: 100,
+          active: true,
+          sort: sortBy as 'volume' | 'liquidity' | 'createdAt' | 'endDate',
+          order: 'desc',
+        })
+        setMarkets(data)
+        setError(null)
+      } catch (err) {
+        setError('Failed to load markets. Please try again.')
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchMarkets()
+  }, [sortBy])
+
+  const filteredMarkets = markets.filter(market => {
+    const matchesCategory = selectedCategory === 'All' || 
+      market.tags?.some(tag => tag.toLowerCase() === selectedCategory.toLowerCase())
+    const matchesSearch = market.question.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesCategory && matchesSearch
   })
 
@@ -92,26 +125,51 @@ export default function MarketsPage() {
           {/* Results Count */}
           <div className="flex items-center justify-between mb-6">
             <p className="text-sm text-terminal-muted">
-              Showing {filteredMarkets.length} markets
+              {loading ? 'Loading markets...' : `Showing ${filteredMarkets.length} markets`}
             </p>
             <div className="flex items-center gap-2">
               <span className="text-sm text-terminal-muted">Sort by:</span>
-              <select className="bg-terminal-card border border-terminal-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-terminal-accent">
+              <select 
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-terminal-card border border-terminal-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-terminal-accent"
+              >
                 {sortOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </div>
           </div>
 
+          {/* Loading State */}
+          {loading && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-terminal-accent animate-spin" />
+              <span className="ml-3 text-terminal-muted">Loading markets...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !loading && (
+            <div className="text-center py-20">
+              <p className="text-terminal-danger mb-2">{error}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="text-terminal-accent hover:underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Markets Grid */}
-          {filteredMarkets.length > 0 ? (
+          {!loading && !error && filteredMarkets.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredMarkets.map((market) => (
                 <MarketCard key={market.id} market={market} />
               ))}
             </div>
-          ) : (
+          ) : !loading && !error && (
             <div className="text-center py-20">
               <TrendingUp className="w-12 h-12 text-terminal-muted mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No markets found</h3>

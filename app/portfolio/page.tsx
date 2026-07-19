@@ -2,31 +2,47 @@
 
 import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
-import { mockPortfolio, mockMarkets } from '@/lib/mock-data'
+import { getUserPositions, UserPosition } from '@/lib/api'
 import {
   Wallet,
   TrendingUp,
   TrendingDown,
   PieChart,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
-  Target,
-  Plus,
-  Settings,
-  Bell,
+  Search,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react'
 import { formatCurrency, formatPercentage } from '@/lib/utils'
-import PriceChart from '@/components/PriceChart'
-import { generateChartData } from '@/lib/mock-data'
 
 export default function PortfolioPage() {
-  const [activeTab, setActiveTab] = useState<'positions' | 'history' | 'alerts'>('positions')
-  const portfolioValue = mockPortfolio.reduce((acc, pos) => acc + pos.amount, 0)
-  const totalPnl = mockPortfolio.reduce((acc, pos) => acc + pos.pnl, 0)
-  const totalPnlPercent = (totalPnl / portfolioValue) * 100
+  const [address, setAddress] = useState('')
+  const [positions, setPositions] = useState<UserPosition[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
+
+  async function fetchPortfolio(e: React.FormEvent) {
+    e.preventDefault()
+    if (!address.trim()) return
+
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getUserPositions(address.trim())
+      setPositions(data)
+      setHasSearched(true)
+    } catch (err) {
+      setError('Failed to fetch portfolio. Please check the address and try again.')
+      setPositions([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const portfolioValue = positions.reduce((acc, pos) => acc + pos.value, 0)
+  const totalPnl = positions.reduce((acc, pos) => acc + pos.pnl, 0)
+  const totalPnlPercent = portfolioValue > 0 ? (totalPnl / (portfolioValue - totalPnl)) * 100 : 0
   const isPositive = totalPnl >= 0
-  const chartData = generateChartData(30)
 
   return (
     <div className="flex min-h-screen bg-terminal-bg">
@@ -43,252 +59,257 @@ export default function PortfolioPage() {
                   Portfolio
                 </h1>
                 <p className="text-sm text-terminal-muted">
-                  Track your positions and performance
+                  View your Polymarket positions by wallet address
                 </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button className="flex items-center gap-2 px-4 py-2 bg-terminal-card border border-terminal-border rounded-lg text-sm hover:bg-terminal-border transition-colors">
-                  <Bell className="w-4 h-4" />
-                  Alerts
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-terminal-accent hover:bg-terminal-accent/90 text-white rounded-lg text-sm font-medium transition-colors">
-                  <Plus className="w-4 h-4" />
-                  Add Position
-                </button>
               </div>
             </div>
           </div>
         </header>
 
         <div className="p-8 space-y-8">
-          {/* Portfolio Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <p className="text-sm text-terminal-muted mb-1">Total Portfolio Value</p>
-              <p className="text-3xl font-bold">{formatCurrency(portfolioValue)}</p>
-              <p className="text-xs text-terminal-muted mt-1">Across {mockPortfolio.length} positions</p>
-            </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <p className="text-sm text-terminal-muted mb-1">Total P&L</p>
-              <div className={`text-3xl font-bold ${isPositive ? 'text-terminal-success' : 'text-terminal-danger'}`}>
-                {isPositive ? '+' : ''}{formatCurrency(totalPnl)}
+          {/* Address Input */}
+          <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+            <form onSubmit={fetchPortfolio} className="flex gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-terminal-muted" />
+                <input
+                  type="text"
+                  placeholder="Enter your wallet address (0x...)"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-terminal-bg border border-terminal-border rounded-lg text-sm focus:outline-none focus:border-terminal-accent font-mono"
+                />
               </div>
-              <p className={`text-xs mt-1 ${isPositive ? 'text-terminal-success' : 'text-terminal-danger'}`}>
-                {isPositive ? '+' : ''}{totalPnlPercent.toFixed(2)}% all time
+              <button
+                type="submit"
+                disabled={loading || !address.trim()}
+                className="px-6 py-3 bg-terminal-accent hover:bg-terminal-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Fetch Portfolio'
+                )}
+              </button>
+            </form>
+            <p className="text-xs text-terminal-muted mt-2">
+              Enter your Ethereum wallet address to view your Polymarket positions
+            </p>
+          </div>
+
+          {/* Error State */}
+          {error && (
+            <div className="bg-terminal-danger/10 border border-terminal-danger/20 rounded-xl p-4">
+              <p className="text-terminal-danger">{error}</p>
+            </div>
+          )}
+
+          {/* Portfolio Overview */}
+          {hasSearched && !loading && positions.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <p className="text-sm text-terminal-muted mb-1">Total Portfolio Value</p>
+                <p className="text-3xl font-bold">{formatCurrency(portfolioValue)}</p>
+                <p className="text-xs text-terminal-muted mt-1">Across {positions.length} positions</p>
+              </div>
+              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <p className="text-sm text-terminal-muted mb-1">Total P&L</p>
+                <div className={`text-3xl font-bold ${isPositive ? 'text-terminal-success' : 'text-terminal-danger'}`}>
+                  {isPositive ? '+' : ''}{formatCurrency(totalPnl)}
+                </div>
+                <p className={`text-xs mt-1 ${isPositive ? 'text-terminal-success' : 'text-terminal-danger'}`}>
+                  {isPositive ? '+' : ''}{totalPnlPercent.toFixed(2)}% all time
+                </p>
+              </div>
+              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <p className="text-sm text-terminal-muted mb-1">Total Invested</p>
+                <p className="text-3xl font-bold">{formatCurrency(portfolioValue - totalPnl)}</p>
+                <p className="text-xs text-terminal-muted mt-1">Cost basis</p>
+              </div>
+              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <p className="text-sm text-terminal-muted mb-1">Win Rate</p>
+                <p className="text-3xl font-bold text-terminal-success">
+                  {positions.length > 0 
+                    ? Math.round((positions.filter(p => p.pnl > 0).length / positions.length) * 100) 
+                    : 0}%
+                </p>
+                <p className="text-xs text-terminal-muted mt-1">
+                  {positions.filter(p => p.pnl > 0).length} of {positions.length} positions profitable
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Positions Table */}
+          {hasSearched && !loading && positions.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl overflow-hidden">
+                  <div className="flex items-center justify-between p-4 border-b border-terminal-border">
+                    <h2 className="font-semibold">Open Positions</h2>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-terminal-border">
+                          <th className="text-left px-6 py-4 text-sm font-medium text-terminal-muted">Market</th>
+                          <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Outcome</th>
+                          <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Size</th>
+                          <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Avg Price</th>
+                          <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Current</th>
+                          <th className="text-right px-6 py-4 text-sm font-medium text-terminal-muted">P&L</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {positions.map((position, idx) => {
+                          const isProfit = position.pnl >= 0
+                          return (
+                            <tr key={idx} className="border-b border-terminal-border hover:bg-terminal-border/30 transition-colors">
+                              <td className="px-6 py-4">
+                                <p className="font-medium line-clamp-1 max-w-xs" title={position.question}>
+                                  {position.question}
+                                </p>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  position.outcome.toLowerCase() === 'yes'
+                                    ? 'bg-terminal-success/10 text-terminal-success'
+                                    : 'bg-terminal-danger/10 text-terminal-danger'
+                                }`}>
+                                  {position.outcome.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <p className="font-medium">{position.size.toFixed(4)}</p>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <p className="terminal-text">{formatPercentage(position.avgPrice)}</p>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <p className="terminal-text">{formatPercentage(position.currentPrice)}</p>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className={`${isProfit ? 'text-terminal-success' : 'text-terminal-danger'}`}>
+                                  <p className="font-medium">
+                                    {isProfit ? '+' : ''}{formatCurrency(position.pnl)}
+                                  </p>
+                                  <p className="text-xs">
+                                    {isProfit ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+                                  </p>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar */}
+              <div className="space-y-6">
+                {/* Allocation */}
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <PieChart className="w-5 h-5" />
+                    <h2 className="font-semibold">Allocation</h2>
+                  </div>
+                  <div className="space-y-4">
+                    {positions.slice(0, 5).map((position, idx) => {
+                      const percentage = portfolioValue > 0 ? (position.value / portfolioValue) * 100 : 0
+                      return (
+                        <div key={idx}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm line-clamp-1 max-w-[150px]" title={position.question}>
+                              {position.question.slice(0, 20)}...
+                            </span>
+                            <span className="text-sm font-medium">{percentage.toFixed(1)}%</span>
+                          </div>
+                          <div className="h-2 bg-terminal-bg rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                position.outcome.toLowerCase() === 'yes' ? 'bg-terminal-success' : 'bg-terminal-danger'
+                              }`}
+                              style={{ width: `${Math.max(percentage, 1)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <h2 className="font-semibold mb-4">Quick Stats</h2>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-terminal-muted">Avg Position Size</span>
+                      <span className="font-medium">
+                        {formatCurrency(positions.length > 0 ? portfolioValue / positions.length : 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-terminal-muted">Largest Position</span>
+                      <span className="font-medium">
+                        {formatCurrency(Math.max(...positions.map(p => p.value), 0))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-terminal-muted">Best Performer</span>
+                      <span className="font-medium text-terminal-success">
+                        +{Math.max(...positions.map(p => p.pnlPercent), 0).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-terminal-muted">Worst Performer</span>
+                      <span className="font-medium text-terminal-danger">
+                        {Math.min(...positions.map(p => p.pnlPercent), 0).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* View on Polymarket */}
+                <a
+                  href={`https://polymarket.com/portfolio/${address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-3 bg-terminal-card border border-terminal-border rounded-xl text-sm font-medium hover:bg-terminal-border transition-colors"
+                >
+                  View on Polymarket
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {hasSearched && !loading && positions.length === 0 && !error && (
+            <div className="text-center py-20 bg-terminal-card border border-terminal-border rounded-xl">
+              <Wallet className="w-12 h-12 text-terminal-muted mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No positions found</h3>
+              <p className="text-sm text-terminal-muted max-w-md mx-auto">
+                This wallet address doesn&apos;t have any open positions on Polymarket, or the data is temporarily unavailable.
               </p>
             </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <p className="text-sm text-terminal-muted mb-1">Available Balance</p>
-              <p className="text-3xl font-bold">{formatCurrency(25000)}</p>
-              <p className="text-xs text-terminal-muted mt-1">Ready to deploy</p>
+          )}
+
+          {/* Initial State */}
+          {!hasSearched && !loading && (
+            <div className="text-center py-20 bg-terminal-card border border-terminal-border rounded-xl">
+              <Wallet className="w-12 h-12 text-terminal-muted mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">Enter your wallet address</h3>
+              <p className="text-sm text-terminal-muted max-w-md mx-auto">
+                Paste your Ethereum wallet address above to view your Polymarket portfolio, positions, and P&L.
+              </p>
             </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <p className="text-sm text-terminal-muted mb-1">Win Rate</p>
-              <p className="text-3xl font-bold text-terminal-success">67%</p>
-              <p className="text-xs text-terminal-muted mt-1">4 of 6 positions profitable</p>
-            </div>
-          </div>
-
-          {/* Portfolio Chart */}
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold">Portfolio Performance</h2>
-                <p className="text-sm text-terminal-muted">Value over time</p>
-              </div>
-              <div className="flex gap-2">
-                {['1D', '1W', '1M', '3M', '1Y', 'ALL'].map((period) => (
-                  <button
-                    key={period}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      period === '1M'
-                        ? 'bg-terminal-accent text-white'
-                        : 'bg-terminal-bg text-terminal-muted hover:text-white'
-                    }`}
-                  >
-                    {period}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <PriceChart data={chartData} height={300} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Positions Table */}
-            <div className="lg:col-span-2">
-              <div className="bg-terminal-card border border-terminal-border rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b border-terminal-border">
-                  <h2 className="font-semibold">Open Positions</h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setActiveTab('positions')}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        activeTab === 'positions'
-                          ? 'bg-terminal-accent text-white'
-                          : 'text-terminal-muted hover:text-white'
-                      }`}
-                    >
-                      Positions
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('history')}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        activeTab === 'history'
-                          ? 'bg-terminal-accent text-white'
-                          : 'text-terminal-muted hover:text-white'
-                      }`}
-                    >
-                      History
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-terminal-border">
-                        <th className="text-left px-6 py-4 text-sm font-medium text-terminal-muted">Market</th>
-                        <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Position</th>
-                        <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Amount</th>
-                        <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Entry</th>
-                        <th className="text-center px-6 py-4 text-sm font-medium text-terminal-muted">Current</th>
-                        <th className="text-right px-6 py-4 text-sm font-medium text-terminal-muted">P&L</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mockPortfolio.map((position) => {
-                        const isProfit = position.pnl >= 0
-                        return (
-                          <tr key={position.id} className="border-b border-terminal-border hover:bg-terminal-border/30 transition-colors">
-                            <td className="px-6 py-4">
-                              <p className="font-medium line-clamp-1 max-w-xs">{position.market}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                                position.position === 'yes'
-                                  ? 'bg-terminal-success/10 text-terminal-success'
-                                  : 'bg-terminal-danger/10 text-terminal-danger'
-                              }`}>
-                                {position.position.toUpperCase()}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="font-medium">{formatCurrency(position.amount)}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="terminal-text">{formatPercentage(position.entryPrice)}</p>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <p className="terminal-text">{formatPercentage(position.currentPrice)}</p>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className={`${isProfit ? 'text-terminal-success' : 'text-terminal-danger'}`}>
-                                <p className="font-medium">
-                                  {isProfit ? '+' : ''}{formatCurrency(position.pnl)}
-                                </p>
-                                <p className="text-xs">
-                                  {isProfit ? '+' : ''}{position.pnlPercent.toFixed(2)}%
-                                </p>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Allocation */}
-              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <PieChart className="w-5 h-5" />
-                  <h2 className="font-semibold">Allocation</h2>
-                </div>
-                <div className="space-y-4">
-                  {mockPortfolio.map((position) => {
-                    const percentage = (position.amount / portfolioValue) * 100
-                    return (
-                      <div key={position.id}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm line-clamp-1 max-w-[150px]">{position.market}</span>
-                          <span className="text-sm font-medium">{percentage.toFixed(1)}%</span>
-                        </div>
-                        <div className="h-2 bg-terminal-bg rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              position.position === 'yes' ? 'bg-terminal-success' : 'bg-terminal-danger'
-                            }`}
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Quick Stats */}
-              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                <h2 className="font-semibold mb-4">Quick Stats</h2>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-terminal-muted">Avg Position Size</span>
-                    <span className="font-medium">{formatCurrency(portfolioValue / mockPortfolio.length)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-terminal-muted">Largest Position</span>
-                    <span className="font-medium">
-                      {formatCurrency(Math.max(...mockPortfolio.map(p => p.amount)))}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-terminal-muted">Best Performer</span>
-                    <span className="font-medium text-terminal-success">
-                      +{Math.max(...mockPortfolio.map(p => p.pnlPercent)).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-terminal-muted">Worst Performer</span>
-                    <span className="font-medium text-terminal-danger">
-                      {Math.min(...mockPortfolio.map(p => p.pnlPercent)).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Watchlist Preview */}
-              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Watchlist</h2>
-                  <button className="text-sm text-terminal-accent hover:underline">View all</button>
-                </div>
-                <div className="space-y-3">
-                  {mockMarkets.slice(0, 3).map((market) => (
-                    <div
-                      key={market.id}
-                      className="flex items-center justify-between p-3 bg-terminal-bg rounded-lg"
-                    >
-                      <div className="flex-1 min-w-0 mr-3">
-                        <p className="text-sm font-medium line-clamp-1">{market.title}</p>
-                        <p className="text-xs text-terminal-muted">{market.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium terminal-text">{formatPercentage(market.probability)}</p>
-                        <p className={`text-xs ${market.change24h >= 0 ? 'text-terminal-success' : 'text-terminal-danger'}`}>
-                          {market.change24h >= 0 ? '+' : ''}{formatPercentage(market.change24h)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </main>
     </div>

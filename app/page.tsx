@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import MarketCard from '@/components/MarketCard'
 import NewsCard from '@/components/NewsCard'
@@ -7,7 +8,11 @@ import ArbitrageCard from '@/components/ArbitrageCard'
 import WhaleActivity from '@/components/WhaleActivity'
 import PriceChart from '@/components/PriceChart'
 import {
-  mockMarkets,
+  getTrendingMarkets,
+  getEndingSoonMarkets,
+  PolymarketMarket,
+} from '@/lib/api'
+import {
   mockNews,
   mockArbitrage,
   mockWhaleActivity,
@@ -21,17 +26,42 @@ import {
   ArrowRight,
   Sparkles,
   Activity,
+  Loader2,
 } from 'lucide-react'
-import { formatCurrency, formatPercentage } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 
 export default function Dashboard() {
-  const trendingMarkets = mockMarkets.slice(0, 3)
+  const [trendingMarkets, setTrendingMarkets] = useState<PolymarketMarket[]>([])
+  const [endingSoonMarkets, setEndingSoonMarkets] = useState<PolymarketMarket[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  
   const latestNews = mockNews.slice(0, 3)
   const arbitrageOpportunities = mockArbitrage.slice(0, 2)
   const chartData = generateChartData(30)
 
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true)
+        const [trending, endingSoon] = await Promise.all([
+          getTrendingMarkets(6),
+          getEndingSoonMarkets(3),
+        ])
+        setTrendingMarkets(trending)
+        setEndingSoonMarkets(endingSoon)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch data')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
   // Calculate total volume
-  const totalVolume = mockMarkets.reduce((acc, m) => acc + m.volume, 0)
+  const totalVolume = trendingMarkets.reduce((acc, m) => acc + (m.volumeNum || 0), 0)
 
   return (
     <div className="flex min-h-screen bg-terminal-bg">
@@ -63,148 +93,184 @@ export default function Dashboard() {
         </header>
 
         <div className="p-8 space-y-8">
-          {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-terminal-accent/10 rounded-lg">
-                  <Activity className="w-5 h-5 text-terminal-accent" />
-                </div>
-                <span className="text-sm text-terminal-muted">Total Volume</span>
-              </div>
-              <p className="text-2xl font-bold">{formatCurrency(totalVolume)}</p>
-              <p className="text-xs text-terminal-success mt-1">+12.5% from last week</p>
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-terminal-accent" />
+              <span className="ml-3 text-terminal-muted">Loading markets...</span>
             </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-terminal-success/10 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-terminal-success" />
-                </div>
-                <span className="text-sm text-terminal-muted">Active Markets</span>
-              </div>
-              <p className="text-2xl font-bold">2,847</p>
-              <p className="text-xs text-terminal-success mt-1">+156 new today</p>
-            </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-terminal-warning/10 rounded-lg">
-                  <Zap className="w-5 h-5 text-terminal-warning" />
-                </div>
-                <span className="text-sm text-terminal-muted">Arb Opportunities</span>
-              </div>
-              <p className="text-2xl font-bold">{mockArbitrage.length}</p>
-              <p className="text-xs text-terminal-muted mt-1">Avg ROI: 7.1%</p>
-            </div>
-            <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-purple-500/10 rounded-lg">
-                  <Sparkles className="w-5 h-5 text-purple-500" />
-                </div>
-                <span className="text-sm text-terminal-muted">AI Signals</span>
-              </div>
-              <p className="text-2xl font-bold">24</p>
-              <p className="text-xs text-terminal-success mt-1">8 high confidence</p>
-            </div>
-          </div>
-
-          {/* Market Overview Chart */}
-          <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold">Market Overview</h2>
-                <p className="text-sm text-terminal-muted">30-day probability trends</p>
-              </div>
-              <div className="flex gap-2">
-                {['1D', '1W', '1M', '3M', '1Y'].map((period) => (
-                  <button
-                    key={period}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      period === '1M'
-                        ? 'bg-terminal-accent text-white'
-                        : 'bg-terminal-bg text-terminal-muted hover:text-white'
-                    }`}
-                  >
-                    {period}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <PriceChart data={chartData} height={250} />
-          </div>
-
-          {/* Trending Markets */}
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold">Trending Markets</h2>
-                <p className="text-sm text-terminal-muted">Most active markets by volume</p>
-              </div>
-              <button className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
-                View all <ArrowRight className="w-4 h-4" />
+          ) : error ? (
+            <div className="bg-terminal-danger/10 border border-terminal-danger/20 rounded-xl p-6 text-center">
+              <p className="text-terminal-danger">{error}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="mt-4 px-4 py-2 bg-terminal-accent rounded-lg text-sm"
+              >
+                Retry
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {trendingMarkets.map((market) => (
-                <MarketCard key={market.id} market={market} />
-              ))}
-            </div>
-          </div>
-
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Arbitrage Opportunities */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-lg font-semibold">Arbitrage Opportunities</h2>
-                  <p className="text-sm text-terminal-muted">Cross-platform price differences</p>
+          ) : (
+            <>
+              {/* Stats Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-terminal-accent/10 rounded-lg">
+                      <Activity className="w-5 h-5 text-terminal-accent" />
+                    </div>
+                    <span className="text-sm text-terminal-muted">Total Volume (24h)</span>
+                  </div>
+                  <p className="text-2xl font-bold">{formatCurrency(totalVolume)}</p>
+                  <p className="text-xs text-terminal-success mt-1">Live from Polymarket</p>
                 </div>
-                <button className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
-                  View all <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="space-y-4">
-                {arbitrageOpportunities.map((opp) => (
-                  <ArbitrageCard key={opp.id} opportunity={opp} />
-                ))}
-              </div>
-            </div>
-
-            {/* Whale Activity */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-lg font-semibold">Whale Activity</h2>
-                  <p className="text-sm text-terminal-muted">Large position movements</p>
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-terminal-success/10 rounded-lg">
+                      <TrendingUp className="w-5 h-5 text-terminal-success" />
+                    </div>
+                    <span className="text-sm text-terminal-muted">Active Markets</span>
+                  </div>
+                  <p className="text-2xl font-bold">{trendingMarkets.length + endingSoonMarkets.length}+</p>
+                  <p className="text-xs text-terminal-success mt-1">Real-time data</p>
                 </div>
-                <button className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
-                  View all <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-terminal-warning/10 rounded-lg">
+                      <Zap className="w-5 h-5 text-terminal-warning" />
+                    </div>
+                    <span className="text-sm text-terminal-muted">Arb Opportunities</span>
+                  </div>
+                  <p className="text-2xl font-bold">{mockArbitrage.length}</p>
+                  <p className="text-xs text-terminal-muted mt-1">Avg ROI: 7.1%</p>
+                </div>
+                <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-purple-500/10 rounded-lg">
+                      <Sparkles className="w-5 h-5 text-purple-500" />
+                    </div>
+                    <span className="text-sm text-terminal-muted">AI Signals</span>
+                  </div>
+                  <p className="text-2xl font-bold">24</p>
+                  <p className="text-xs text-terminal-success mt-1">8 high confidence</p>
+                </div>
               </div>
-              <WhaleActivity activities={mockWhaleActivity} />
-            </div>
-          </div>
 
-          {/* AI News Intelligence */}
-          <div>
-            <div className="flex items-center justify-between mb-6">
+              {/* Market Overview Chart */}
+              <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-lg font-semibold">Market Overview</h2>
+                    <p className="text-sm text-terminal-muted">30-day probability trends</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {['1D', '1W', '1M', '3M', '1Y'].map((period) => (
+                      <button
+                        key={period}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          period === '1M'
+                            ? 'bg-terminal-accent text-white'
+                            : 'bg-terminal-bg text-terminal-muted hover:text-white'
+                        }`}
+                      >
+                        {period}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <PriceChart data={chartData} height={250} />
+              </div>
+
+              {/* Trending Markets */}
               <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-purple-500" />
-                  AI News Intelligence
-                </h2>
-                <p className="text-sm text-terminal-muted">AI-analyzed news with market impact</p>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-lg font-semibold">Trending Markets</h2>
+                    <p className="text-sm text-terminal-muted">Highest volume on Polymarket</p>
+                  </div>
+                  <a href="/markets" className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
+                    View all <ArrowRight className="w-4 h-4" />
+                  </a>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {trendingMarkets.slice(0, 6).map((market) => (
+                    <MarketCard key={market.id} market={market} />
+                  ))}
+                </div>
               </div>
-              <button className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
-                View all <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {latestNews.map((news) => (
-                <NewsCard key={news.id} news={news} />
-              ))}
-            </div>
-          </div>
+
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Arbitrage Opportunities */}
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold">Arbitrage Opportunities</h2>
+                      <p className="text-sm text-terminal-muted">Cross-platform price differences</p>
+                    </div>
+                    <a href="/arbitrage" className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
+                      View all <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </div>
+                  <div className="space-y-4">
+                    {arbitrageOpportunities.map((opp) => (
+                      <ArbitrageCard key={opp.id} opportunity={opp} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Whale Activity */}
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold">Whale Activity</h2>
+                      <p className="text-sm text-terminal-muted">Large position movements</p>
+                    </div>
+                    <a href="/markets" className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
+                      View all <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </div>
+                  <WhaleActivity activities={mockWhaleActivity} />
+                </div>
+              </div>
+
+              {/* AI News Intelligence */}
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-purple-500" />
+                      AI News Intelligence
+                    </h2>
+                    <p className="text-sm text-terminal-muted">AI-analyzed news with market impact</p>
+                  </div>
+                  <a href="/news" className="flex items-center gap-2 text-sm text-terminal-accent hover:underline">
+                    View all <ArrowRight className="w-4 h-4" />
+                  </a>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {latestNews.map((news) => (
+                    <NewsCard key={news.id} news={news} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Ending Soon */}
+              {endingSoonMarkets.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-lg font-semibold">Ending Soon</h2>
+                      <p className="text-sm text-terminal-muted">Markets closing soon</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {endingSoonMarkets.slice(0, 3).map((market) => (
+                      <MarketCard key={market.id} market={market} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>
