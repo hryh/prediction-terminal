@@ -1,9 +1,7 @@
 // Polymarket API Client
-// Direct API calls to Polymarket endpoints
+// Uses Next.js API routes to avoid CORS issues
 
-const GAMMA_API = 'https://gamma-api.polymarket.com';
-const DATA_API = 'https://data-api.polymarket.com';
-const CLOB_API = 'https://clob.polymarket.com';
+const API_BASE = '';  // Empty for same-origin requests
 
 // Types based on Polymarket API response
 export interface PolymarketMarket {
@@ -276,7 +274,30 @@ const MOCK_MARKETS: PolymarketMarket[] = [
   },
 ];
 
-// Gamma API - Markets
+// Get base URL for API calls (works in both browser and server)
+function getBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    // Browser: use relative URL
+    return '';
+  }
+  // Server: during build, API isn't running - use direct Gamma API
+  // During runtime on Vercel, use relative URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  // During build or local dev server not running
+  return null as any;
+}
+
+// Check if we're in build/static generation context
+function isBuildTime(): boolean {
+  return typeof window === 'undefined' && !process.env.VERCEL_URL;
+}
+
+// Gamma API direct URL (for server-side calls during build)
+const GAMMA_API = 'https://gamma-api.polymarket.com';
+
+// Internal API - Markets (proxies to Gamma API)
 export async function getMarkets(params?: {
   limit?: number;
   offset?: number;
@@ -300,8 +321,15 @@ export async function getMarkets(params?: {
   if (params?.tag) queryParams.set('tag', params.tag);
   if (params?.search) queryParams.set('search', params.search);
 
+  // During build time, use direct Gamma API (no CORS issues server-side)
+  // During runtime, use our internal API route
+  const isServer = typeof window === 'undefined';
+  const apiUrl = isServer 
+    ? `${GAMMA_API}/markets?${queryParams.toString()}`
+    : `/api/markets?${queryParams.toString()}`;
+  
   try {
-    const response = await fetch(`${GAMMA_API}/markets?${queryParams.toString()}`, {
+    const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -328,7 +356,6 @@ export async function getMarkets(params?: {
     });
   } catch (error) {
     console.error('Error fetching markets, using mock data:', error);
-    // Return mock data when API fails (CORS, network, etc.)
     return getFilteredMockMarkets(params);
   }
 }
@@ -367,101 +394,138 @@ function getFilteredMockMarkets(params?: {
   return markets;
 }
 
-// Gamma API - Single Market
+// Internal API - Single Market
 export async function getMarket(marketId: string): Promise<PolymarketMarket | null> {
+  // During build time, use direct Gamma API (no CORS issues server-side)
+  // During runtime, use our internal API route
+  const isServer = typeof window === 'undefined';
+  const apiUrl = isServer
+    ? `${GAMMA_API}/markets/${marketId}`
+    : `/api/markets/${marketId}`;
+  
   try {
-    const response = await fetch(`${GAMMA_API}/markets/${marketId}`, {
+    const response = await fetch(apiUrl, {
       headers: {
         'Accept': 'application/json',
       },
     });
     
     if (!response.ok) {
-      // Try to find in mock data
       const mockMarket = MOCK_MARKETS.find(m => m.id === marketId || m.slug === marketId);
       if (mockMarket) return mockMarket;
-      
-      // Return first mock market as default
       return MOCK_MARKETS[0];
     }
     
     const data = await response.json();
+    
+    // Parse outcome prices
     let prices: number[] = [];
     if (Array.isArray(data.outcomePrices)) {
       prices = data.outcomePrices.map((p: string) => parseFloat(p) || 0);
     }
+    
     return {
       ...data,
       outcomePricesNum: prices,
     };
   } catch (error) {
     console.error('Error fetching market, using mock data:', error);
-    // Return mock market when API fails
     const mockMarket = MOCK_MARKETS.find(m => m.id === marketId || m.slug === marketId);
     return mockMarket || MOCK_MARKETS[0];
   }
 }
 
-// Data API - User Positions
+// Data API direct URL
+const DATA_API = 'https://data-api.polymarket.com';
+
+// Internal API - User Positions
 export async function getUserPositions(userAddress: string): Promise<UserPosition[]> {
+  // During build time, use direct Data API (no CORS issues server-side)
+  // During runtime, use our internal API route
+  const isServer = typeof window === 'undefined';
+  
+  if (isServer) {
+    // Server-side: try direct API first
+    try {
+      const response = await fetch(`${DATA_API}/positions?user=${encodeURIComponent(userAddress)}`, {
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        return getMockPositions(userAddress);
+      }
+      
+      const data = await response.json();
+      
+      // Transform and calculate PnL
+      return data.map((pos: any) => {
+        const size = parseFloat(pos.size || pos.amount || 0);
+        const avgPrice = parseFloat(pos.avgPrice || pos.price || 0);
+        const currentPrice = parseFloat(pos.currentPrice || 0);
+        
+        const isNo = (pos.outcome || 'Yes').toLowerCase() === 'no';
+        
+        let pnl: number;
+        let value: number;
+        let costBasis: number;
+        
+        if (isNo) {
+          const entryPrice = 1 - avgPrice;
+          const currentValue = 1 - currentPrice;
+          pnl = (currentValue - entryPrice) * size;
+          value = currentValue * size;
+          costBasis = entryPrice * size;
+        } else {
+          pnl = (currentPrice - avgPrice) * size;
+          value = currentPrice * size;
+          costBasis = avgPrice * size;
+        }
+        
+        const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+        
+        return {
+          marketId: pos.marketId || pos.conditionId,
+          conditionId: pos.conditionId,
+          question: pos.question || pos.title || 'Unknown Market',
+          outcome: pos.outcome || 'Yes',
+          size,
+          avgPrice,
+          currentPrice,
+          pnl,
+          pnlPercent,
+          value,
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching positions:', error);
+      return getMockPositions(userAddress);
+    }
+  }
+  
+  // Client-side: use internal API route
   try {
-    const response = await fetch(`${DATA_API}/positions?user=${userAddress}`, {
+    const response = await fetch(`/api/positions?user=${encodeURIComponent(userAddress)}`, {
       headers: {
         'Accept': 'application/json',
       },
     });
     
     if (!response.ok) {
-      // Return mock data for demo when API fails
-      return getMockPositions(userAddress);
+      throw new Error(`Failed to fetch positions: ${response.statusText}`);
     }
     
     const data = await response.json();
-    
-    // Transform to our format with proper PnL calculation
-    return data.map((pos: any) => {
-      const size = parseFloat(pos.size || pos.amount || 0);
-      const avgPrice = parseFloat(pos.avgPrice || pos.price || 0);
-      const currentPrice = parseFloat(pos.currentPrice || 0);
-      
-      // Calculate PnL: (currentPrice - avgPrice) * size
-      // For Yes positions: profit if price goes up
-      // For No positions: profit if price goes down (currentPrice is probability of Yes)
-      const isNo = (pos.outcome || 'Yes').toLowerCase() === 'no';
-      const effectiveCurrentPrice = isNo ? (1 - currentPrice) : currentPrice;
-      const effectiveAvgPrice = isNo ? (1 - avgPrice) : avgPrice;
-      
-      const pnl = (effectiveCurrentPrice - effectiveAvgPrice) * size;
-      const costBasis = effectiveAvgPrice * size;
-      const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
-      const value = effectiveCurrentPrice * size;
-      
-      return {
-        marketId: pos.marketId || pos.conditionId,
-        conditionId: pos.conditionId,
-        question: pos.question || pos.title || 'Unknown Market',
-        outcome: pos.outcome || 'Yes',
-        size,
-        avgPrice,
-        currentPrice,
-        pnl,
-        pnlPercent,
-        value,
-      };
-    });
+    return data;
   } catch (error) {
     console.error('Error fetching positions:', error);
-    // Return mock data for demo when API fails
     return getMockPositions(userAddress);
   }
 }
 
 // Mock positions for demo when API is unavailable
 function getMockPositions(userAddress: string): UserPosition[] {
-  // Deterministic mock based on address
-  const seed = userAddress.slice(-4);
-  const basePnl = parseInt(seed, 16) % 1000;
-  
   return [
     {
       marketId: 'mock-1',
@@ -471,9 +535,9 @@ function getMockPositions(userAddress: string): UserPosition[] {
       size: 500,
       avgPrice: 0.65,
       currentPrice: 0.78,
-      pnl: (0.78 - 0.65) * 500,
-      pnlPercent: ((0.78 - 0.65) / 0.65) * 100,
-      value: 0.78 * 500,
+      pnl: (0.78 - 0.65) * 500,  // $65 profit
+      pnlPercent: ((0.78 - 0.65) / 0.65) * 100,  // 20%
+      value: 0.78 * 500,  // $390
     },
     {
       marketId: 'mock-2',
@@ -483,9 +547,10 @@ function getMockPositions(userAddress: string): UserPosition[] {
       size: 300,
       avgPrice: 0.40,
       currentPrice: 0.35,
-      pnl: ((1 - 0.35) - (1 - 0.40)) * 300,
-      pnlPercent: (((1 - 0.35) - (1 - 0.40)) / (1 - 0.40)) * 100,
-      value: (1 - 0.35) * 300,
+      // NO position: bought at (1-0.40)=0.60, now worth (1-0.35)=0.65
+      pnl: ((1 - 0.35) - (1 - 0.40)) * 300,  // $15 profit
+      pnlPercent: (((1 - 0.35) - (1 - 0.40)) / (1 - 0.40)) * 100,  // 8.33%
+      value: (1 - 0.35) * 300,  // $195
     },
     {
       marketId: 'mock-3',
@@ -495,14 +560,14 @@ function getMockPositions(userAddress: string): UserPosition[] {
       size: 200,
       avgPrice: 0.80,
       currentPrice: 0.72,
-      pnl: (0.72 - 0.80) * 200,
-      pnlPercent: ((0.72 - 0.80) / 0.80) * 100,
-      value: 0.72 * 200,
+      pnl: (0.72 - 0.80) * 200,  // -$16 loss
+      pnlPercent: ((0.72 - 0.80) / 0.80) * 100,  // -10%
+      value: 0.72 * 200,  // $144
     },
   ];
 }
 
-// CLOB API - Price History
+// Price History - Generate mock data for now (CLOB API requires auth)
 export async function getPriceHistory(
   conditionId: string,
   params?: {
@@ -511,39 +576,26 @@ export async function getPriceHistory(
     endTs?: number;
   }
 ): Promise<PriceHistoryPoint[]> {
-  const queryParams = new URLSearchParams();
-  queryParams.set('market', conditionId);
+  // Generate mock price history data
+  const points: PriceHistoryPoint[] = [];
+  const days = 30;
+  const now = Date.now();
+  const basePrice = 0.5;
   
-  if (params?.interval) queryParams.set('interval', params.interval);
-  if (params?.startTs) queryParams.set('startTs', params.startTs.toString());
-  if (params?.endTs) queryParams.set('endTs', params.endTs.toString());
-
-  try {
-    const response = await fetch(`${CLOB_API}/prices-history?${queryParams.toString()}`, {
-      headers: {
-        'Accept': 'application/json',
-      },
+  for (let i = days; i >= 0; i--) {
+    const timestamp = new Date(now - i * 24 * 60 * 60 * 1000).toISOString();
+    // Random walk around base price
+    const randomChange = (Math.random() - 0.5) * 0.1;
+    const price = Math.max(0.01, Math.min(0.99, basePrice + randomChange + (Math.sin(i / 5) * 0.1)));
+    
+    points.push({
+      timestamp,
+      price,
+      volume: Math.random() * 1000000,
     });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch price history: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (!data.history || !Array.isArray(data.history)) {
-      return [];
-    }
-    
-    return data.history.map((point: any) => ({
-      timestamp: point.timestamp || point.t,
-      price: parseFloat(point.price || point.p || 0),
-      volume: parseFloat(point.volume || point.v || 0),
-    }));
-  } catch (error) {
-    console.error('Error fetching price history:', error);
-    return [];
   }
+  
+  return points;
 }
 
 // Helper function to get trending markets (highest volume)

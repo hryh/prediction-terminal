@@ -41,7 +41,13 @@ export default function PortfolioPage() {
 
   const portfolioValue = positions.reduce((acc, pos) => acc + pos.value, 0)
   const totalPnl = positions.reduce((acc, pos) => acc + pos.pnl, 0)
-  const totalPnlPercent = portfolioValue > 0 ? (totalPnl / (portfolioValue - totalPnl)) * 100 : 0
+  const totalInvested = positions.reduce((acc, pos) => {
+    // Cost basis = entry price * size
+    const isNo = pos.outcome.toLowerCase() === 'no'
+    const entryPrice = isNo ? (1 - pos.avgPrice) : pos.avgPrice
+    return acc + (entryPrice * pos.size)
+  }, 0)
+  const totalPnlPercent = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
   const isPositive = totalPnl >= 0
 
   return (
@@ -126,7 +132,7 @@ export default function PortfolioPage() {
               </div>
               <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
                 <p className="text-sm text-terminal-muted mb-1">Total Invested</p>
-                <p className="text-3xl font-bold">{formatCurrency(portfolioValue - totalPnl)}</p>
+                <p className="text-3xl font-bold">{formatCurrency(totalInvested)}</p>
                 <p className="text-xs text-terminal-muted mt-1">Cost basis</p>
               </div>
               <div className="bg-terminal-card border border-terminal-border rounded-xl p-6">
