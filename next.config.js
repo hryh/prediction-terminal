@@ -5,10 +5,9 @@ const nextConfig = {
     domains: ['images.unsplash.com', 'via.placeholder.com', 'polymarket.com'],
     unoptimized: true,
   },
-  // Enable static export for Vercel
+  // Static export for simple hosting
   output: 'export',
   distDir: 'dist',
-  // Handle API routes in static export
   trailingSlash: true,
 }
 

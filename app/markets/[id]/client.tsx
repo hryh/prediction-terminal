@@ -38,7 +38,7 @@ export default function MarketDetailClient({ marketId }: MarketDetailClientProps
         setMarket(marketData)
         
         // Fetch price history if conditionId exists
-        if (marketData.conditionId) {
+        if (marketData?.conditionId) {
           try {
             const history = await getPriceHistory(marketData.conditionId, {
               interval: timeRange === '1H' ? '1m' : timeRange === '1D' ? '5m' : '1h',
