@@ -34,7 +34,6 @@ export default function Dashboard() {
   const [trendingMarkets, setTrendingMarkets] = useState<PolymarketMarket[]>([])
   const [endingSoonMarkets, setEndingSoonMarkets] = useState<PolymarketMarket[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   
   const latestNews = mockNews.slice(0, 3)
   const arbitrageOpportunities = mockArbitrage.slice(0, 2)
@@ -51,7 +50,8 @@ export default function Dashboard() {
         setTrendingMarkets(trending)
         setEndingSoonMarkets(endingSoon)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch data')
+        console.error('Error fetching data:', err)
+        // API will return mock data on error, so we won't get here
       } finally {
         setLoading(false)
       }
@@ -97,16 +97,6 @@ export default function Dashboard() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-terminal-accent" />
               <span className="ml-3 text-terminal-muted">Loading markets...</span>
-            </div>
-          ) : error ? (
-            <div className="bg-terminal-danger/10 border border-terminal-danger/20 rounded-xl p-6 text-center">
-              <p className="text-terminal-danger">{error}</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-terminal-accent rounded-lg text-sm"
-              >
-                Retry
-              </button>
             </div>
           ) : (
             <>

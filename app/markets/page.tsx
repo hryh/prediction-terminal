@@ -20,7 +20,6 @@ export default function MarketsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [markets, setMarkets] = useState<PolymarketMarket[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState('volume')
 
   useEffect(() => {
@@ -34,10 +33,9 @@ export default function MarketsPage() {
           order: 'desc',
         })
         setMarkets(data)
-        setError(null)
       } catch (err) {
-        setError('Failed to load markets. Please try again.')
-        console.error(err)
+        console.error('Error fetching markets:', err)
+        // API returns mock data on error, so we won't get here
       } finally {
         setLoading(false)
       }
@@ -149,27 +147,14 @@ export default function MarketsPage() {
             </div>
           )}
 
-          {/* Error State */}
-          {error && !loading && (
-            <div className="text-center py-20">
-              <p className="text-terminal-danger mb-2">{error}</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="text-terminal-accent hover:underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
           {/* Markets Grid */}
-          {!loading && !error && filteredMarkets.length > 0 ? (
+          {!loading && filteredMarkets.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredMarkets.map((market) => (
                 <MarketCard key={market.id} market={market} />
               ))}
             </div>
-          ) : !loading && !error && (
+          ) : !loading && (
             <div className="text-center py-20">
               <TrendingUp className="w-12 h-12 text-terminal-muted mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">No markets found</h3>
