@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const GAMMA_API = 'https://gamma-api.polymarket.com'
+const UPSTREAM_TIMEOUT_MS = 10000
+
+function timeoutAfter(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Gamma API timed out after ${ms}ms`)), ms)
+  })
+}
 
 function normalizeMarket(market: any) {
   let prices: number[] = []
@@ -39,13 +46,16 @@ export async function GET(request: NextRequest) {
   if (!gammaParams.has('limit')) gammaParams.set('limit', '100')
   
   try {
-    const response = await fetch(`${GAMMA_API}/markets?${gammaParams.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      next: { revalidate: 30 }, // Cache for 30 seconds
-    })
+    const response = await Promise.race([
+      fetch(`${GAMMA_API}/markets?${gammaParams.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        next: { revalidate: 30 }, // Cache for 30 seconds
+      }),
+      timeoutAfter(UPSTREAM_TIMEOUT_MS),
+    ])
     
     if (!response.ok) {
       throw new Error(`Gamma API error: ${response.status}`)

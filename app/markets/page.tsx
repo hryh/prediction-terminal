@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import MarketCard from '@/components/MarketCard'
 import { getMarkets, PolymarketMarket } from '@/lib/api'
-import { Search, Filter, Grid3X3, List, TrendingUp, Loader2 } from 'lucide-react'
+import { Search, Filter, Grid3X3, List, TrendingUp, Loader2, AlertCircle } from 'lucide-react'
 
 const categories = ['All', 'Politics', 'Crypto', 'Sports', 'Tech', 'Science', 'Pop Culture']
 const sortOptions = [
@@ -20,27 +20,30 @@ export default function MarketsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [markets, setMarkets] = useState<PolymarketMarket[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState('volume')
 
-  useEffect(() => {
-    async function fetchMarkets() {
-      try {
-        setLoading(true)
-        const data = await getMarkets({
-          limit: 100,
-          active: true,
-          sort: sortBy as 'volume' | 'liquidity' | 'createdAt' | 'endDate',
-          order: 'desc',
-        })
-        setMarkets(data)
-      } catch (err) {
-        console.error('Error fetching markets:', err)
-        // API returns mock data on error, so we won't get here
-      } finally {
-        setLoading(false)
-      }
+  async function fetchMarkets() {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getMarkets({
+        limit: 100,
+        active: true,
+        sort: sortBy as 'volume' | 'liquidity' | 'createdAt' | 'endDate',
+        order: 'desc',
+      })
+      setMarkets(data)
+    } catch (err) {
+      console.error('Error fetching markets:', err)
+      setMarkets([])
+      setError('Live Polymarket markets are temporarily unavailable.')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchMarkets()
   }, [sortBy])
 
@@ -148,7 +151,19 @@ export default function MarketsPage() {
           )}
 
           {/* Markets Grid */}
-          {!loading && filteredMarkets.length > 0 ? (
+          {!loading && error ? (
+            <div className="text-center py-20">
+              <AlertCircle className="w-12 h-12 text-terminal-warning mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">Could not load live markets</h3>
+              <p className="text-sm text-terminal-muted mb-6">{error}</p>
+              <button
+                onClick={fetchMarkets}
+                className="px-4 py-2 bg-terminal-accent hover:bg-terminal-accent/90 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          ) : !loading && filteredMarkets.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredMarkets.map((market) => (
                 <MarketCard key={market.id} market={market} />

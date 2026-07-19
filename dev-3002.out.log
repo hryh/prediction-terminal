@@ -1,0 +1,18 @@
+
+> prediction-terminal@0.1.0 dev
+> next dev -p 3002
+
+  ▲ Next.js 14.2.0
+  - Local:        http://localhost:3002
+
+ ✓ Starting...
+ ✓ Ready in 3.8s
+ ○ Compiling / ...
+ ✓ Compiled / in 2.2s (573 modules)
+ GET / 200 in 2451ms
+ ✓ Compiled in 181ms (293 modules)
+ ✓ Compiled /markets in 281ms (573 modules)
+ GET /markets 200 in 405ms
+ ✓ Compiled /api/markets in 134ms (318 modules)
+ GET /api/markets?limit=1&active=true 200 in 404ms
+ GET /api/markets?limit=1&active=true 200 in 14ms
