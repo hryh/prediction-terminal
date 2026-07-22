@@ -5,7 +5,7 @@ const UPSTREAM_TIMEOUT_MS = 10000
 
 function timeoutAfter(ms: number): Promise<never> {
   return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(`Gamma API timed out after ${ms}ms`)), ms)
+    setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)
   })
 }
 
@@ -33,60 +33,47 @@ function normalizeMarket(market: any) {
 }
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-
-  // Forward all query params to Gamma API
-  const gammaParams = new URLSearchParams()
-  searchParams.forEach((value, key) => {
-    gammaParams.set(key, value)
-  })
-
-  // Default params if not provided
-  if (!gammaParams.has('active')) gammaParams.set('active', 'true')
-  if (!gammaParams.has('limit')) gammaParams.set('limit', '100')
-
   try {
-    // LOG THE REQUEST FOR DEBUGGING
-    const fullUrl = `${GAMMA_API}/markets?${gammaParams.toString()}`
-    console.log('🔍 Fetching from Polymarket:', fullUrl)
-    console.log('📊 Query params:', Object.fromEntries(gammaParams))
+    // Build minimal query - only send 'active=true'
+    const url = new URL(request.url)
+    const testUrl = `${GAMMA_API}/markets?active=true&limit=100`
+    
+    console.log('TEST_URL:', testUrl)
 
     const response = await Promise.race([
-      fetch(`${GAMMA_API}/markets?${gammaParams.toString()}`, {
+      fetch(testUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-        next: { revalidate: 30 }, // Cache for 30 seconds
       }),
       timeoutAfter(UPSTREAM_TIMEOUT_MS),
     ])
 
+    console.log('RESPONSE_STATUS:', response.status)
+
     if (!response.ok) {
-      // LOG THE ERROR RESPONSE
-      const errorBody = await response.text().catch(() => 'No response body')
-      console.error(`❌ Gamma API error: ${response.status}`)
-      console.error('Response body:', errorBody)
-      throw new Error(`Gamma API error: ${response.status}`)
+      const body = await response.text()
+      console.log('ERROR_RESPONSE:', body)
+      throw new Error(`API returned ${response.status}`)
     }
 
     const data = await response.json()
+    console.log('SUCCESS_MARKETS_COUNT:', data.length)
 
     if (!Array.isArray(data)) {
-      throw new Error('Gamma API returned an unexpected response')
+      throw new Error('Not an array')
     }
 
     const markets = data.map(normalizeMarket)
-
-    console.log(`✅ Successfully fetched ${markets.length} markets`)
 
     return NextResponse.json(markets, {
       headers: {
         'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
       },
     })
-  } catch (error) {
-    console.error('Error fetching markets:', error)
+  } catch (error: any) {
+    console.log('FINAL_ERROR:', error?.message || String(error))
     return NextResponse.json(
       { error: 'Failed to fetch markets' },
       { status: 500 }
