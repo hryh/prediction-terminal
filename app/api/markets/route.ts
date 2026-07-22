@@ -5,7 +5,7 @@ const UPSTREAM_TIMEOUT_MS = 10000
 
 function timeoutAfter(ms: number): Promise<never> {
   return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Gamma API timed out after ${ms}ms')), ms)
+    setTimeout(() => reject(new Error(`Gamma API timed out after ${ms}ms`)), ms)
   })
 }
 
@@ -33,7 +33,7 @@ function normalizeMarket(market: any) {
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.uri)
+  const searchParams = request.nextUrl.searchParams
 
   // Forward all query params to Gamma API
   const gammaParams = new URLSearchParams()
